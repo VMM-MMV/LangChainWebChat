@@ -29,10 +29,10 @@ class WebChatbot:
         self.extract_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a professional prompt analyst. "
                         "Your task is to identify parts of the prompt that require real-time or constantly updating information, " 
-                        "extract those specific parts, don't repeat them, there have to be as few of them as possible, so we dont waste money on search requests, " 
-                        "then restructure them for easier searching on the internet"
+                        "extract those specific parts, " 
+                        "then restructure them into common questions so they're more broad, for more accurate internet searching, "
                         "and add them to a json list."
-                        "RETURN THE LIST LAST, WITH THE SEARCH TERMS ONLY, IF THERE ARE NONE MAKE THE ARRAY EMPTY. DON'T DO SIMILAR QUERIES"),
+                        "RETURN THE LIST LAST, WITH THE SEARCH TERMS ONLY, IF THERE ARE NONE MAKE THE LIST EMPTY."),
             ("human", "{input}"),
         ])
 
@@ -116,19 +116,16 @@ class WebChatbot:
             WebChatbot.precise_sleep(0.005)
 
     def process_input(self, user_input):
-        try:
-            online_queries = self.extract_searchable_queries(user_input)
-        except Exception:
-            online_queries = self.extract_searchable_queries(user_input)
-
+        online_queries = self.extract_searchable_queries(user_input)
         search_results = self.get_online_answers(online_queries)
         llm = self.route_searched(search_results)
         chat_history = self.memory.load_memory_variables({})["chat_history"]
 
         response = ""
         for chunk in llm.stream({"input": user_input, "search_results": search_results, "chat_history": chat_history}):
-            self.stream_output(chunk)
             response += chunk
+            # Yield each chunk for streaming in Streamlit
+            yield chunk
 
         self.memory.save_context(
             {"input": user_input},
@@ -148,7 +145,8 @@ class WebChatbot:
 
             if user_input:
                 print("\nBot:", end=" ")
-                self.process_input(user_input)
+                for chunk in self.process_input(user_input):
+                    print(chunk, end="")
 
 
 if __name__ == "__main__":
