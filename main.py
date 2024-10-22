@@ -1,10 +1,10 @@
 import os
 import sys
 import time
+import json
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
 from langchain_groq import ChatGroq
 
 from dotenv import load_dotenv 
@@ -20,21 +20,82 @@ llm = ChatGroq(
     streaming=True
 )
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful AI assistant that answers questions"),
+extract_prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a professional prompt analyst. "
+                "Your task is to identify parts of the prompt that require real-time or constantly updating information, " 
+                "extract those specific parts" 
+                ", then restructure them for easier searching on the internet, with the smallest amount of searches possible"
+                "and add them to a json list."
+                "RETURN THE LIST LAST, WITH THE SEARCH TERMS ONLY, IF THERE ARE NONE MAKE THE ARRAY EMPTY. DON'T DO SIMILAR QUERIES"),
     ("human", "{input}"),
-    ("system", "Search results: {search_result}")
 ])
 
-chain = (
-    { 
-        "input": RunnablePassthrough(),
-        "search_result": lambda x: search_tool.run(x["input"])
-    }
-    | prompt
+online_prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful AI assistant that answers questions, which have online answers to them."),
+    ("human", "{input}"),
+    ("system", "Search results: {search_results}")
+])
+
+normal_prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful AI assistant that answers questions"),
+    ("human", "{input}"),
+])
+
+extract_chain = (
+    extract_prompt
     | llm
     | StrOutputParser()
 )
+
+online_chain = (
+    online_prompt
+    | llm
+    | StrOutputParser()
+)
+
+normal_chain = (
+    normal_prompt
+    | llm
+    | StrOutputParser()
+)
+
+def extract_searchable_queries(user_input):
+    res = extract_chain.invoke({"input": user_input})
+    print(res)
+    list_start, list_end = res.rfind("["), res.rfind("]")
+    list_body = res[list_start:list_end+1].replace("[","").replace("]","").replace("'", '"')
+    list_body = f"[{list_body}]"
+    print(list_body)
+    return json.loads(list_body)
+
+# who is the president of moldova
+
+# def get_online_answers(info):
+#     print(info)
+#     if info["topic"] != []:
+#         return search_tool.run(info["topic"])
+#     else:
+#         return ""
+
+def get_online_answers(info):
+    if info != []:
+        return search_tool.run(info[0])
+    else:
+        return ""
+    
+def route_searched(online_response):
+    if online_response == "":
+        return normal_chain
+    else:
+        return online_chain
+
+# chain = (
+#     {"analysis" : lambda x: extract_searchable_queries(x["input"])} 
+#     | 
+#     {"search_results": lambda x: calculate_search(x)}
+#     | 
+#     search_chain
+# )
 
 def precise_sleep(seconds):
     end_time = time.perf_counter() + seconds
@@ -48,13 +109,11 @@ def stream_output(text):
         precise_sleep(0.005)
 
 def process_input(user_input):
-    try:
-        for chunk in chain.stream({"input": user_input}):
-            stream_output(chunk)
-        
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-
+    online_queries = extract_searchable_queries(user_input)
+    search_results = get_online_answers(online_queries)
+    llm = route_searched(search_results)
+    for chunk in llm.stream({"input": user_input, "search_results": search_results}):
+        stream_output(chunk)
 
 user_input = input("\nYou: ").strip()
     
