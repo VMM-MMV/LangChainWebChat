@@ -141,11 +141,30 @@ def process_input(user_input):
     search_results = get_online_answers(online_queries)
     llm = route_searched(search_results)
     chat_history = memory.load_memory_variables({})["chat_history"]
+
+    response = ""
     for chunk in llm.stream({"input": user_input, "search_results": search_results, "chat_history": chat_history}):
         stream_output(chunk)
+        response += chunk
+    
+    memory.save_context(
+        {"input": user_input},
+        {"output": response}
+    )
 
-# user_input = input("\nYou: ").strip()
-user_input = "moldova president"
-if user_input:
-    print("\nBot: ", end=" ")
-    process_input(user_input)
+def run():
+    print("Welcome to the Web Chatbot!")
+    print("Type 'quit' to exit the conversation.\n")
+    
+    while True:
+        user_input = input("\nYou: ").strip()
+        
+        if user_input.lower() in ['quit', 'exit']:
+            print("\nGoodbye! Thank you for chatting.")
+            break
+            
+        if user_input:
+            print("\nBot:", end=" ")
+            process_input(user_input)
+
+run()
