@@ -1,9 +1,10 @@
 import os
+import sys
+import time
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_groq import ChatGroq
-import sys
 
 from dotenv import load_dotenv 
 load_dotenv()
@@ -28,10 +29,16 @@ chain = (
     | StrOutputParser()
 )
 
+def precise_sleep(seconds):
+    end_time = time.perf_counter() + seconds
+    while time.perf_counter() < end_time:
+        pass
+
 def stream_output(text):
     for char in text:
         sys.stdout.write(char)
         sys.stdout.flush()
+        precise_sleep(0.005)
 
 def process_input(user_input):
     try:
