@@ -21,19 +21,30 @@ class WebChatbot:
             memory_key="chat_history"
         )
         self.llm = ChatGroq(
-            model="mixtral-8x7b-32768",
             temperature=0.7,
             streaming=True
         )
 
         self.extract_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a professional prompt analyst. "
-                        "Your task is to identify parts of the prompt that require real-time or constantly updating information, " 
-                        "extract those specific parts, " 
-                        "then restructure them into common questions so they're more broad, for more accurate internet searching, "
-                        "and add them to a json list."
-                        "RETURN THE LIST LAST, WITH THE SEARCH TERMS ONLY, IF THERE ARE NONE MAKE THE LIST EMPTY."),
-            ("human", "{input}"),
+            ("system", """You are a professional prompt analyst. You will analyze the provided prompt and previous context to extract search queries.
+
+            Your specific tasks:
+            1. Identify any parts that need real-time or current information
+            2. Extract those parts and convert them to search-friendly terms
+            """),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "search online:" + "{input}"),
+        ])
+
+        self.standardize_prompt = ChatPromptTemplate.from_messages([
+            ("system", """You will be given some text that has in it some search queries.
+             You will follow:
+             1. You will return the queries in a python/JSON list.
+             2. Only strings in the list.
+             3. At most 3 items.
+             4. If there are no items, return the list empty. 
+             5. You will not generate anything other than that list."""),
+            ("human", "search online:" + "{input}"),
         ])
 
         self.online_prompt = ChatPromptTemplate.from_messages([
@@ -55,6 +66,12 @@ class WebChatbot:
             | StrOutputParser()
         )
 
+        self.standardize_chain = (
+            self.standardize_prompt
+            | self.llm
+            | StrOutputParser()
+        )
+
         self.online_chain = (
             self.online_prompt
             | self.llm
@@ -67,8 +84,9 @@ class WebChatbot:
             | StrOutputParser()
         )
 
-    def extract_searchable_queries(self, user_input):
-        res = self.extract_chain.invoke({"input": user_input})
+    def extract_searchable_queries(self, user_input, chat_history):
+        res = self.extract_chain.invoke({"input": user_input, "chat_history": chat_history})
+        res = self.standardize_chain.invoke({"input": res})
         print(res)
         list_start, list_end = res.rfind("["), res.rfind("]")
         list_body = res[list_start:list_end+1].replace("[", "").replace("]", "")
@@ -87,11 +105,8 @@ class WebChatbot:
 
                 for future in as_completed(future_to_item):
                     item = future_to_item[future]
-                    try:
-                        result = future.result()
-                        results.append(result)
-                    except Exception as exc:
-                        results.append(f"Error searching '{item}': {exc}")
+                    result = future.result()
+                    results.append(result)
 
             return "\n".join(results)
         else:
@@ -116,15 +131,14 @@ class WebChatbot:
             WebChatbot.precise_sleep(0.005)
 
     def process_input(self, user_input):
-        online_queries = self.extract_searchable_queries(user_input)
+        chat_history = self.memory.load_memory_variables({})["chat_history"]
+        online_queries = self.extract_searchable_queries(user_input, chat_history)
         search_results = self.get_online_answers(online_queries)
         llm = self.route_searched(search_results)
-        chat_history = self.memory.load_memory_variables({})["chat_history"]
 
         response = ""
         for chunk in llm.stream({"input": user_input, "search_results": search_results, "chat_history": chat_history}):
             response += chunk
-            # Yield each chunk for streaming in Streamlit
             yield chunk
 
         self.memory.save_context(
@@ -147,7 +161,6 @@ class WebChatbot:
                 print("\nBot:", end=" ")
                 for chunk in self.process_input(user_input):
                     print(chunk, end="")
-
 
 if __name__ == "__main__":
     WebChatbot().run()
