@@ -6,6 +6,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from dotenv import load_dotenv 
 load_dotenv()
@@ -23,8 +24,8 @@ llm = ChatGroq(
 extract_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a professional prompt analyst. "
                 "Your task is to identify parts of the prompt that require real-time or constantly updating information, " 
-                "extract those specific parts" 
-                ", then restructure them for easier searching on the internet, with the smallest amount of searches possible"
+                "extract those specific parts, don't repeat them, there have to be as few of them as possible, so we dont waste money on search requests, " 
+                "then restructure them for easier searching on the internet"
                 "and add them to a json list."
                 "RETURN THE LIST LAST, WITH THE SEARCH TERMS ONLY, IF THERE ARE NONE MAKE THE ARRAY EMPTY. DON'T DO SIMILAR QUERIES"),
     ("human", "{input}"),
@@ -77,9 +78,30 @@ def extract_searchable_queries(user_input):
 #     else:
 #         return ""
 
+# def get_online_answers(info):
+#     if info != []:
+#         return search_tool.run(info[0])
+#     else:
+#         return ""
+
 def get_online_answers(info):
-    if info != []:
-        return search_tool.run(info[0])
+    def search_info(item):
+        return search_tool.run(item)
+    
+    if info:
+        results = []
+        with ThreadPoolExecutor() as executor:
+            future_to_item = { executor.submit(search_info, item): item for item in info }
+            
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as exc:
+                    results.append(f"Error searching '{item}': {exc}")  # Handle exceptions
+
+        return "\n".join(results)  # Join all results into a single string
     else:
         return ""
     
@@ -115,8 +137,8 @@ def process_input(user_input):
     for chunk in llm.stream({"input": user_input, "search_results": search_results}):
         stream_output(chunk)
 
-user_input = input("\nYou: ").strip()
-    
+# user_input = input("\nYou: ").strip()
+user_input = "moldova president"
 if user_input:
     print("\nBot: ", end=" ")
     process_input(user_input)
