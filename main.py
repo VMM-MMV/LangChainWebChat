@@ -4,7 +4,8 @@ import time
 import json
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.memory import ConversationBufferMemory
 from langchain_groq import ChatGroq
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -14,6 +15,11 @@ load_dotenv()
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
 
 search_tool = DuckDuckGoSearchRun()
+
+memory = ConversationBufferMemory(
+    return_messages=True,
+    memory_key="chat_history"
+)
 
 llm = ChatGroq(
     model="mixtral-8x7b-32768",
@@ -34,11 +40,13 @@ extract_prompt = ChatPromptTemplate.from_messages([
 online_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful AI assistant that answers questions, which have online answers to them."),
     ("human", "{input}"),
+    MessagesPlaceholder(variable_name="chat_history"),
     ("system", "Search results: {search_results}")
 ])
 
 normal_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful AI assistant that answers questions"),
+    MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
 ])
 
@@ -68,8 +76,6 @@ def extract_searchable_queries(user_input):
     list_body = f"[{list_body}]"
     print(list_body)
     return json.loads(list_body)
-
-# who is the president of moldova
 
 # def get_online_answers(info):
 #     print(info)
@@ -134,7 +140,8 @@ def process_input(user_input):
     online_queries = extract_searchable_queries(user_input)
     search_results = get_online_answers(online_queries)
     llm = route_searched(search_results)
-    for chunk in llm.stream({"input": user_input, "search_results": search_results}):
+    chat_history = memory.load_memory_variables({})["chat_history"]
+    for chunk in llm.stream({"input": user_input, "search_results": search_results, "chat_history": chat_history}):
         stream_output(chunk)
 
 # user_input = input("\nYou: ").strip()
