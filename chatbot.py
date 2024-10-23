@@ -26,7 +26,7 @@ class WebChatbot:
         )
 
         self.extract_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a professional prompt analyst. You will analyze the provided prompt and previous context to extract search queries.
+            ("system", """You are a AI assitant. You will analyze the provided prompt and previous context to extract search queries.
 
             Your specific tasks:
             1. Identify any parts that need real-time or current information
