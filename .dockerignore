@@ -1,0 +1,48 @@
+# Environment and local development files
+.env
+.env.*
+*.pyc
+__pycache__/
+.python-version
+.venv
+venv/
+ENV/
+.pytest_cache/
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Docker specific
+Dockerfile
+docker-compose.yml
+.docker
+
+# Documentation and test files
+README.md
+CHANGELOG.md
+docs/
+tests/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Build and distribution files
+dist/
+build/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
